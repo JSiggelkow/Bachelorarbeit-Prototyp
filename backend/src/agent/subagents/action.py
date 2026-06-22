@@ -3,7 +3,7 @@ from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_core.tools import tool
 
 from agent.config import get_model
-from agent.middleware import PII_MIDDLEWARE
+from agent.middleware import PII_MIDDLEWARE, PromptInjectionGuardMiddleware
 from agent.tools.user import create_user, get_user_by_id, find_user_by_name, find_user_by_email, delete_user, get_users
 
 action_agent = create_agent(
@@ -18,6 +18,7 @@ action_agent = create_agent(
         "If tool usage got denied, return 'Tool usage got denied'"
     ),
     middleware=[
+        PromptInjectionGuardMiddleware(),
         *PII_MIDDLEWARE,
         HumanInTheLoopMiddleware(
             interrupt_on={
