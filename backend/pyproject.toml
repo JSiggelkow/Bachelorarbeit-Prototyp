@@ -16,6 +16,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "langgraph>=1.0.0",
     "python-dotenv>=1.0.1",
+    "sqlalchemy>=2.0.51",
 ]
 
 

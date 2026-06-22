@@ -23,7 +23,7 @@ knowledge_agent = create_agent(
 
 @tool("knowledge")
 def knowledge(request: str) -> str:
-    """Answers Questions has knowledge"""
+    """Answers Questions with knowledge"""
     result = knowledge_agent.invoke(
         {
             "messages": [{

@@ -109,6 +109,7 @@ dependencies = [
     { name = "langchain-text-splitters" },
     { name = "langgraph" },
     { name = "python-dotenv" },
+    { name = "sqlalchemy" },
 ]
 
 [package.optional-dependencies]
@@ -137,6 +138,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11.1" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6.1" },
+    { name = "sqlalchemy", specifier = ">=2.0.51" },
 ]
 provides-extras = ["dev"]
 
