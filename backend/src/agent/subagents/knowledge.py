@@ -2,6 +2,7 @@ from langchain.agents import create_agent
 from langchain.tools import tool
 
 from agent.config import get_model
+from agent.middleware import PII_MIDDLEWARE
 from agent.vectorstore import get_vector_store
 
 @tool(response_format="content_and_artifact")
@@ -18,6 +19,9 @@ knowledge_agent = create_agent(
     model=get_model(),
     tools=[retrieve_knowledge],
     system_prompt="Always use the retrieve_knowledge tool before Answering. If you cannot find the answer in the retrieved knowledge, answer with 'Knowledge not found'",
+    middleware=[
+        *PII_MIDDLEWARE,
+    ],
 )
 
 

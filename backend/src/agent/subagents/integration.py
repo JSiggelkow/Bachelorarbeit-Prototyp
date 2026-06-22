@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.config import get_model
+from agent.middleware import PII_MIDDLEWARE
 
 load_dotenv()
 
@@ -36,6 +37,7 @@ async def _build_integration_agent():
             "You are an Jira-Assistant. You are connected to a Jira-Project and you can manage it with Tools."
         ),
         middleware=[
+            *PII_MIDDLEWARE,
             HumanInTheLoopMiddleware(
                 interrupt_on={
                     "jira_create_issue": True,
