@@ -12,5 +12,16 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  atlassian-mcp:
+    image: ghcr.io/sooperset/mcp-atlassian:latest
+    container_name: atlassian-mcp
+    env_file:
+      - .env
+    environment:
+      JIRA_PROJECTS_FILTER: BA-MCP-Integration
+    command: ["--transport", "streamable-http", "--port", "9000", "--host", "0.0.0.0"]
+    ports:
+      - "9000:9000"
+
 volumes:
   pgdata:
