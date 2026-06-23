@@ -125,7 +125,7 @@ class LLMInjectionGuardMiddleware(AgentMiddleware):
         self._judge = get_model()
 
     @hook_config(can_jump_to=["end"])
-    def before_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+    async def abefore_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
         for message in reversed(state["messages"]):
             if isinstance(message, AIMessage):
                 break
@@ -145,7 +145,7 @@ class LLMInjectionGuardMiddleware(AgentMiddleware):
             )
 
             try:
-                verdict = self._judge.invoke(
+                verdict = await self._judge.ainvoke(
                     [
                         SystemMessage(_GUARD_SYSTEM), HumanMessage(user_block)
                     ]

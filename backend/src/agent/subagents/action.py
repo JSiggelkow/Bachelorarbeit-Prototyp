@@ -18,8 +18,6 @@ action_agent = create_agent(
         "If tool usage got denied, return 'Tool usage got denied'"
     ),
     middleware=[
-        PromptInjectionGuardMiddleware(),
-        *PII_MIDDLEWARE,
         HumanInTheLoopMiddleware(
             interrupt_on={
                 "create_user": {"allowed_decisions": ["approve", "reject"]},

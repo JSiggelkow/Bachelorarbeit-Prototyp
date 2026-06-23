@@ -37,9 +37,6 @@ async def _build_integration_agent():
             "You are an Jira-Assistant. You are connected to a Jira-Project and you can manage it with Tools."
         ),
         middleware=[
-            PromptInjectionGuardMiddleware(),
-            LLMInjectionGuardMiddleware(),
-            *PII_MIDDLEWARE,
             HumanInTheLoopMiddleware(
                 interrupt_on={
                     "jira_create_issue": True,
