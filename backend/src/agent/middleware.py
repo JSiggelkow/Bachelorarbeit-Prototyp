@@ -1,11 +1,14 @@
+import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import PIIMiddleware, hook_config, AgentMiddleware
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
+from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
-from sqlalchemy import true
+from langgraph.types import Command
 
 from agent.config import get_model
 from agent.injection_patterns import INJECTION_PATTERNS
@@ -30,41 +33,66 @@ logger = logging.getLogger("agent.guardrails")
 _REGEX_TIMEOUT = 1.0
 
 
+def _last_user_text(state: AgentState) -> str | None:
+    if not state["messages"]:
+        return None
+    last = state["messages"][-1]
+    if not isinstance(last, HumanMessage):
+        return None
+    content = last.content if isinstance(last.content, str) else str(last.content)
+    return content if content.strip() else None
+
+
 class PromptInjectionGuardMiddleware(AgentMiddleware):
+
+    def _scan(self, content: str) -> tuple[bool, str | None, str | None]:
+        for entry in INJECTION_PATTERNS:
+            try:
+                hit = entry.pattern.search(content, timeout=_REGEX_TIMEOUT)
+            except TimeoutError:
+                logger.warning(f"Regex timeout for {entry.id}")
+                hit = True
+            if hit:
+                return True, entry.id, entry.description
+        return False, None, None
+
+    def _result(self, content: str) -> dict[str, Any] | None:
+        is_hit, entry_id, entry_description = self._scan(content)
+        if is_hit:
+            logger.warning(f"Detected {entry_id} in tool result")
+            return {
+                "messages": [
+                    AIMessage(
+                        f"Cancelled: In tool result detected {entry_id}. {entry_description}"
+                    )
+                ],
+                "jump_to": "end",
+            }
+        return None
 
     @hook_config(can_jump_to=["end"])
     def before_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
-        for message in reversed(state["messages"]):
-            if isinstance(message, AIMessage):
-                break
-            content = (
-                message.content
-                if isinstance(message.content, str)
-                else str(message.content)
-            )
+        content = _last_user_text(state)
+        if content is None:
+            return None
+        return self._result(content)
 
-            for entry in INJECTION_PATTERNS:
-                try:
-                    hit = entry.pattern.search(content, timeout=_REGEX_TIMEOUT)
-                except TimeoutError:
-                    logger.warning(f"Regex timeout for {entry.id}")
-                    hit = True
-
-                if hit:
-                    source = (
-                        "tool"
-                        if isinstance(message, ToolMessage)
-                        else "human"
+    @hook_config(can_jump_to=["end"])
+    async def abefore_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+        content = _last_user_text(state)
+        if content is None:
+            return None
+        is_hit, entry_id, description = await asyncio.to_thread(self._scan, content)
+        if is_hit:
+            logger.warning(f"Detected {entry_id} in tool result")
+            return {
+                "messages": [
+                    AIMessage(
+                        f"Cancelled: In tool result detected {entry_id}. {description}"
                     )
-                    logger.warning(f"Detected {entry.id} in {source} message")
-                    return {
-                        "messages": [
-                            AIMessage(
-                                f"Cancelled: In {source} message detected {entry.id}. {entry.description}"
-                            )
-                        ],
-                        "jump_to": "end",
-                    }
+                ],
+                "jump_to": "end",
+            }
         return None
 
 
@@ -124,45 +152,69 @@ class LLMInjectionGuardMiddleware(AgentMiddleware):
         super().__init__()
         self._judge = get_model()
 
+    async def _is_attack(self, content: str) -> bool:
+        user_block = f"SOURCE: user_input\n{_BEGIN}\n{content}\n{_END}"
+        try:
+            verdict = await self._judge.ainvoke(
+                [SystemMessage(_GUARD_SYSTEM), HumanMessage(user_block)]
+            )
+            return "ATTACK" in verdict.text.upper()
+        except Exception:
+            logger.exception("Error in LLM-Guard")
+            return True
+
     @hook_config(can_jump_to=["end"])
     async def abefore_model(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
-        for message in reversed(state["messages"]):
-            if isinstance(message, AIMessage):
-                break
-
-            content = (
-                message.content
-                if isinstance(message.content, str)
-                else str(message.content)
-            )
-            if not content.strip():
-                continue
-
-            source = "tool_result" if isinstance(message, ToolMessage) else "user_input"
-            user_block = (
-                f"SOURCE: {source}\n"
-                f"{_BEGIN}\n{content}\n{_END}"
-            )
-
-            try:
-                verdict = await self._judge.ainvoke(
-                    [
-                        SystemMessage(_GUARD_SYSTEM), HumanMessage(user_block)
-                    ]
-                )
-                is_attack = "ATTACK" in verdict.text.upper()
-            except Exception:
-                logger.exception("Error in LLM-Guard")
-                is_attack = True
-
-            if is_attack:
-                logger.warning(f"Detected LLM-based injection in {source} message")
-                return {
-                    "messages": [
-                        AIMessage(
-                            "Cancelled: Possible Prompt-Injection detected"
-                        )
-                    ],
-                    "jump_to": "end",
-                }
+        content = _last_user_text(state)
+        if content is None:
+            return None
+        if await self._is_attack(content):
+            logger.warning("Detected LLM-based injection in user_input message")
+            return {
+                "messages": [AIMessage("Cancelled: Possible Prompt-Injection detected")],
+                "jump_to": "end",
+            }
         return None
+class ToolResultInjectionGuardMiddleware(AgentMiddleware):
+    """Prüft Tool-Ergebnisse in Subagenten auf indirekte Prompt-Injection."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._judge = get_model()
+
+    async def _is_attack(self, content: str) -> bool:
+        user_block = f"SOURCE: tool_result\n{_BEGIN}\n{content}\n{_END}"
+        try:
+            verdict = await self._judge.ainvoke(
+                [SystemMessage(_GUARD_SYSTEM), HumanMessage(user_block)]
+            )
+            return "ATTACK" in verdict.text.upper()
+        except Exception:
+            logger.exception("Error in tool-result LLM-Guard")
+            return True
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], "ToolMessage | Command"],
+    ) -> "ToolMessage | Command":
+        result = await handler(request)
+
+        message = result if isinstance(result, ToolMessage) else None
+        if message is None:
+            return result
+
+        content = (
+            message.content if isinstance(message.content, str) else str(message.content)
+        )
+        if content.strip() and await self._is_attack(content):
+            logger.warning(
+                f"Detected injection in tool_result from {request.tool_call['name']}"
+            )
+            return ToolMessage(
+                content="Cancelled: Possible Prompt-Injection in tool result detected",
+                tool_call_id=request.tool_call["id"],
+                name=request.tool_call["name"],
+                status="error",
+            )
+        return result

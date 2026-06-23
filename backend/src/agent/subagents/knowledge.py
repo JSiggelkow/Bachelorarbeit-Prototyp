@@ -4,7 +4,8 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 
 from agent.config import get_model
-from agent.middleware import PII_MIDDLEWARE, PromptInjectionGuardMiddleware, LLMInjectionGuardMiddleware
+from agent.middleware import PII_MIDDLEWARE, PromptInjectionGuardMiddleware, LLMInjectionGuardMiddleware, \
+    ToolResultInjectionGuardMiddleware
 from agent.vectorstore import get_vector_store
 
 class Source(BaseModel):
@@ -35,6 +36,9 @@ knowledge_agent = create_agent(
     tools=[retrieve_knowledge],
     system_prompt="Always use the retrieve_knowledge tool before Answering. If you cannot find the answer in the retrieved knowledge, answer with 'Knowledge not found'",
     response_format=ToolStrategy(KnowledgeResponse),
+    middleware=[
+        ToolResultInjectionGuardMiddleware(),
+    ]
 )
 @tool("knowledge")
 async def knowledge(request: str) -> str:
