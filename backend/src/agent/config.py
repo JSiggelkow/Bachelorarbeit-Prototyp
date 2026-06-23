@@ -5,3 +5,6 @@ load_dotenv()
 
 def get_model() -> ChatOpenAI:
     return ChatOpenAI(model="gpt-5.5")
+
+def get_guard_model() -> ChatOpenAI:
+    return ChatOpenAI(model="gpt-5.4-mini")

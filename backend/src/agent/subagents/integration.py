@@ -8,7 +8,6 @@ from langchain_core.tools import tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.config import get_model
-from agent.middleware import PII_MIDDLEWARE, PromptInjectionGuardMiddleware, LLMInjectionGuardMiddleware
 
 load_dotenv()
 
@@ -21,9 +20,6 @@ _client = MultiServerMCPClient(
         }
     }
 )
-
-tools = asyncio.run(_client.get_tools())
-print([t.name for t in tools])
 
 _integration_agent = None
 

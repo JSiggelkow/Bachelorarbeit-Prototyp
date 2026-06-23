@@ -10,7 +10,7 @@ from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.runtime import Runtime
 from langgraph.types import Command
 
-from agent.config import get_model
+from agent.config import get_model, get_guard_model
 from agent.injection_patterns import INJECTION_PATTERNS
 
 PII_MIDDLEWARE = [
@@ -150,7 +150,7 @@ class LLMInjectionGuardMiddleware(AgentMiddleware):
 
     def __init__(self) -> None:
         super().__init__()
-        self._judge = get_model()
+        self._judge = get_guard_model()
 
     async def _is_attack(self, content: str) -> bool:
         user_block = f"SOURCE: user_input\n{_BEGIN}\n{content}\n{_END}"
@@ -180,7 +180,7 @@ class ToolResultInjectionGuardMiddleware(AgentMiddleware):
 
     def __init__(self) -> None:
         super().__init__()
-        self._judge = get_model()
+        self._judge = get_guard_model()
 
     async def _is_attack(self, content: str) -> bool:
         user_block = f"SOURCE: tool_result\n{_BEGIN}\n{content}\n{_END}"
